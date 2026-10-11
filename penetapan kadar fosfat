@@ -1,0 +1,66 @@
+/* ===== Kalkulator ===== */
+document.head.insertAdjacentHTML('beforeend','<style>td.cs,td.sh,td.sr{font-weight:600;white-space:nowrap}td.cs{color:var(--ac)}#calc td select{min-width:96px}</style>');
+const steps=[0,.5,1,1.5,2,2.5,3];let REG=null,RES={},SP=[],SIMDATA=false;const BK=()=>parseFloat($('bk').value)||0;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>{const x=parseFloat(String(v).replace(',','.'));return isFinite(x)?x:NaN};
+/* RUMUS KONSENTRASI (otomatis): C (mg/L) = (Absorbansi - intersep) / slope */
+const conc=(abs,r)=>(abs-r.a)/r.b;
+function stdTable(){$('std').innerHTML='<tr><th>V larutan baku 2 (mL)</th><th>V labu (mL)</th><th>Konsentrasi (mg/L)</th><th>Absorbansi</th><th>Konsentrasi hitung (mg/L)</th><th>% terhadap nominal</th></tr>'+steps.map((s,i)=>`<tr><td><input class="sv" value="${s}"></td><td><input class="sl" value="10"></td><td class="sc"></td><td><input class="sa" placeholder="0.000"></td><td class="sh">-</td><td class="sr">-</td></tr>`).join('')}
+function sampleTables(){$('smp').innerHTML='<tr><th>Kode</th><th>Jenis</th><th>Bobot (g)</th><th>Abs</th><th>Cs (mg/L)</th><th>V labu (mL)</th><th>Fp</th><th></th></tr>';$('spk').innerHTML='<tr><th>Kode</th><th>Abs C3</th><th>Cs (mg/L)</th><th>ms (g)</th><th>V std (mL)</th><th>C std (mg/L)</th><th>V labu (mL)</th><th>Fp</th><th>f sampel</th><th></th></tr>'}
+const DEL='<td><button class="btn" onclick="this.closest(\'tr\').remove();calc()">×</button></td>';
+function addS(v=['K1','pangan','','','50','10']){const r=$('smp').insertRow();r.innerHTML=`<td><input value="${esc(v[0])}"></td><td><select>${['pangan','pupuk','air'].map(o=>`<option ${v[1]==o?'selected':''}>${o}</option>`).join('')}</select></td><td><input value="${esc(v[2])}"></td><td><input value="${esc(v[3])}"></td><td class="cs">-</td><td><input value="${esc(v[4])}"></td><td><input value="${esc(v[5])}"></td>`+DEL}
+function addK(v=['K1','','','','500','50','10','1']){const r=$('spk').insertRow();r.innerHTML=`<td><input value="${esc(v[0])}"></td><td><input value="${esc(v[1])}"></td><td class="cs">-</td>`+[2,3,4,5,6,7].map(i=>`<td><input value="${esc(v[i])}"></td>`).join('')+DEL}
+function reg(x,y){const n=x.length,mx=x.reduce((a,b)=>a+b)/n,my=y.reduce((a,b)=>a+b)/n;let sxy=0,sxx=0,syy=0;x.forEach((v,i)=>{sxy+=(v-mx)*(y[i]-my);sxx+=(v-mx)**2;syy+=(y[i]-my)**2});if(!(sxx>0)||!(syy>0))return null;const b=sxy/sxx,a=my-b*mx,r=sxy/Math.sqrt(sxx*syy);let sse=0;x.forEach((v,i)=>sse+=(y[i]-a-b*v)**2);const s=n>2?Math.sqrt(sse/(n-2)):NaN;return{a,b,r,r2:r*r,s,n,lod:3.3*s/b,loq:10*s/b}}
+const sd=a=>{const m=a.reduce((x,y)=>x+y)/a.length;return a.length>1?Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1)):NaN},mean=a=>a.reduce((x,y)=>x+y)/a.length;
+function calc(){const ci=N('ar')/N('bm')*N('m')*1000/(N('vi')/1000),c1=ci*N('v1')/N('v1l'),c2=c1*N('v2')/N('v2l');$('ci').textContent=f(ci,2);$('c1').textContent=f(c1,3);$('c2').textContent=f(c2,3);
+const rows=[...$('std').rows].slice(1),X=[],Y=[],SR=[];
+rows.forEach(r=>{const i=r.querySelectorAll('input'),c=c2*num(i[0].value)/num(i[1].value),a=num(i[2].value);r.querySelector('.sc').textContent=f(c,4);if(isFinite(c)&&isFinite(a)){X.push(c);Y.push(a)}SR.push({r,c,a})});
+REG=X.length>2?reg(X,Y):null;REG&&(REG.X=X,REG.Y=Y);
+/* konsentrasi hitung deret standar = (Abs - intersep) / slope */
+SR.forEach(o=>{const h=o.r.querySelector('.sh'),p=o.r.querySelector('.sr');if(REG&&isFinite(o.a)){const cc=conc(o.a,REG);h.textContent=f(cc,4);p.textContent=o.c>0?f(cc/o.c*100,1):'-'}else{h.textContent='-';p.textContent='-'}});
+$('reg').innerHTML=REG?`<h3>Persamaan regresi</h3><div class="stat"><span class="eq">Y = <b>${f(REG.a,4)}</b> + <b>${f(REG.b,4)}</b> X</span></div><div class="stat"><span>r <b>${f(REG.r,5)}</b></span><span>R² <b>${f(REG.r2,5)}</b></span></div><p class="${REG.r>=.995?'ok':'bad'}">${REG.r>=.995?'Linearitas memenuhi (r ≥ 0,995)':'Linearitas kurang (r < 0,995), periksa deret standar'}</p><p class="mut">Intersep a = ${f(REG.a,4)}, slope b = ${f(REG.b,4)}. Konsentrasi dihitung otomatis: <b>Cs = (Abs − a) / b</b>. Estimasi: s(y/x) = ${f(REG.s,4)}; LOD = 3,3·s/b = <b>${f(REG.lod,4)}</b> mg/L; LOQ = 10·s/b = <b>${f(REG.loq,4)}</b> mg/L.</p>`:'<p class="mut">Isi minimal 3 absorbansi standar (dengan konsentrasi berbeda) untuk membuat kurva.</p>';
+RES={rows:[],g:{},skip:[],skipK:[]};SP=[];
+const sm=[...$('smp').rows].slice(1),sk=[...$('spk').rows].slice(1);
+if(REG){const PO4=94.971/N('ar'),bk=BK();
+sm.forEach((r,ri)=>{const q=r.querySelectorAll('input,select'),cell=r.querySelector('.cs'),k=q[0].value.trim(),j=q[1].value,m=num(q[2].value),ab=num(q[3].value),vl=num(q[4].value),fp=num(q[5].value)||1;
+if(!isFinite(ab)){cell.textContent='-';return}
+const abc=ab-bk,cs=conc(abc,REG);cell.textContent=f(cs,4);
+const kd=j=='air'?cs*fp:cs*vl*fp/m;
+if(!isFinite(kd)){RES.skip.push('Baris sampel '+(ri+1)+' ('+(k||'tanpa kode')+') belum dihitung kadarnya: isi bobot dan V labu.');return}
+const o={k,j,m,ab,abc,vl,fp,cs,kd,po4:j=='air'?kd*PO4:NaN,out:cs<.01||cs>Math.max(...REG.X)*1.02,lq:cs>=.01&&cs<REG.loq};RES.rows.push(o);(RES.g[k]=RES.g[k]||[]).push(o)});
+sk.forEach((r,ri)=>{const q=[...r.querySelectorAll('input')].map(i=>num(i.value)),k=r.querySelector('input').value.trim(),cell=r.querySelector('.cs'),ab=q[1];
+if(!isFinite(ab)){cell.textContent='-';return}
+const cs=conc(ab-bk,REG);cell.textContent=f(cs,4);
+const ms=q[2],c2=q[3]*q[4]/ms,c3=cs*q[5]*(q[6]||1)/ms,g=RES.g[k],c1=g?mean(g.map(o=>o.kd)):NaN,fk=q[7]||1,rec=(c3-fk*c1)/c2*100;
+if(isFinite(rec))SP.push({k,ab,ms,c1,c2,c3,f:fk,rec});else RES.skipK.push('Baris spike '+(ri+1)+' ('+(k||'tanpa kode')+') belum dihitung: pastikan ms, V std, C std, V labu terisi dan ada sampel dengan kode yang sama.')})}
+else document.querySelectorAll('#smp .cs,#spk .cs').forEach(e=>e.textContent='-');
+$('simb').style.display=SIMDATA?'block':'none';draw();out()}
+function out(){const warn=a=>a&&a.length?'<p class="bad" style="border-radius:8px;padding:6px 12px">'+a.map(esc).join('<br>')+'</p>':'';
+let h='<table><tr><th>Kode</th><th>Ulangan</th><th>Abs</th><th>Cs (mg/L)</th><th>Kadar</th><th>Satuan</th><th>Catatan</th></tr>';const cnt={};
+RES.rows&&RES.rows.forEach(o=>{cnt[o.k]=(cnt[o.k]||0)+1;h+=`<tr><td>${esc(o.k)}</td><td>${cnt[o.k]}</td><td>${f(o.ab)}</td><td>${f(o.cs,4)}</td><td><b>${f(o.kd,2)}</b></td><td>${o.j=='air'?'mg P/L':'mg P/kg'}</td><td class="${o.out?'bad':''}">${o.out?'Cs di luar rentang standar, encerkan/ulangi':o.lq?'Cs < LOQ, hasil indikatif':o.j=='air'?'PO₄ = '+f(o.po4,3)+' mg/L':''}</td></tr>`});
+h+='</table><p class="mut">Cs = (Abs − blanko − a) / b, dengan a = intersep dan b = slope kurva kalibrasi.</p><h3>Presisi</h3><table><tr><th>Kode</th><th>n</th><th>Rerata</th><th>SD</th><th>%RSD</th><th>%RPD (n=2)</th></tr>';
+Object.entries(RES.g||{}).forEach(([k,a])=>{const v=a.map(o=>o.kd),m=mean(v),s=sd(v);const pd=v.length==2?Math.abs(v[0]-v[1])/m*100:NaN;a.stat={m,s,rsd:s/m*100,rpd:pd};h+=`<tr><td>${esc(k)}</td><td>${v.length}</td><td>${f(m,2)}</td><td>${f(s,3)}</td><td>${f(s/m*100,2)}</td><td>${f(pd,2)}</td></tr>`});$('res').innerHTML=warn(RES.skip)+h+'</table>';
+$('rsp').innerHTML=warn(RES.skipK)+(SP.length?'<table><tr><th>Kode</th><th>C1 (mg/kg)</th><th>C3 (mg/kg)</th><th>C2 (mg/kg)</th><th>% Rec</th><th>Status (80-120%)</th></tr>'+SP.map(o=>`<tr><td>${esc(o.k)}</td><td>${f(o.c1,2)}</td><td>${f(o.c3,2)}</td><td>${f(o.c2,2)}</td><td><b>${f(o.rec,1)}</b></td><td class="${o.rec>=80&&o.rec<=120?'ok':'bad'}">${o.rec>=80&&o.rec<=120?'Memenuhi':'Tidak memenuhi'}</td></tr>`).join('')+'</table>':'')}
+function draw(){const c=$('ch'),g=c.getContext('2d'),W=640,H=380,p=55;g.fillStyle='#fff';g.fillRect(0,0,W,H);g.fillStyle=g.strokeStyle='#222';g.font='13px sans-serif';
+if(!REG){g.fillText('Kurva kalibrasi akan tampil di sini',200,190);return}
+const R0=RES.rows||[],mx=Math.max(...REG.X,...R0.map(o=>o.cs))*1.1||1,my=Math.max(...REG.Y,...R0.map(o=>o.abc))*1.1||1,px=x=>p+x/mx*(W-p-15),py=y=>H-p-y/my*(H-p-20);
+g.strokeStyle='#e1e6ec';for(let i=0;i<=5;i++){g.beginPath();g.moveTo(px(mx*i/5),py(0));g.lineTo(px(mx*i/5),py(my));g.moveTo(px(0),py(my*i/5));g.lineTo(px(mx),py(my*i/5));g.stroke();g.fillStyle='#222';g.fillText(f(mx*i/5,2),px(mx*i/5)-12,H-p+16);g.fillText(f(my*i/5,2),8,py(my*i/5)+4)}
+g.strokeStyle='#222';g.strokeRect(p,20,W-p-15,H-p-20);g.fillText('Konsentrasi P (mg/L)',W/2-60,H-12);g.save();g.translate(14,H/2+30);g.rotate(-Math.PI/2);g.fillText('Absorbansi',0,0);g.restore();
+g.strokeStyle='#1f5fbf';g.lineWidth=2;g.beginPath();g.moveTo(px(0),py(REG.a));g.lineTo(px(mx),py(REG.a+REG.b*mx));g.stroke();g.lineWidth=1;
+g.fillStyle='#1f5fbf';REG.X.forEach((x,i)=>{g.beginPath();g.arc(px(x),py(REG.Y[i]),4,0,7);g.fill()});
+g.fillStyle='#c8441e';R0.forEach(o=>{const x=px(o.cs),y=py(o.abc);g.beginPath();g.moveTo(x,y-6);g.lineTo(x+6,y);g.lineTo(x,y+6);g.lineTo(x-6,y);g.fill()});
+g.fillStyle='#222';g.fillText(`Y = ${f(REG.a,4)} + ${f(REG.b,4)}X   r = ${f(REG.r,4)}`,p+10,36);g.fillStyle='#c8441e';g.fillText('◆ sampel',W-95,36)}
+function ex(){SIMDATA=true;quickStd();$('smp').innerHTML='';$('spk').innerHTML='';sampleTables();['air','pupuk','pangan'].forEach(k=>{const p=PRE[k];['r1','r2'].forEach(t=>addS([p.k,k,p.m,sim(k,t).toFixed(4),p.vl,p.fp]));addK([p.k,sim(k,'spk').toFixed(4),p.sm,p.vs,p.cs,p.vl,p.fp,p.f])});calc()}
+document.addEventListener('input',e=>{const t=e.target;if(!t.closest||!t.closest('#calc')||t.closest('#repc'))return;const tr=t.closest('tr'),isKode=!!(t.closest('#smp,#spk')&&tr&&t===tr.querySelector('input'));if(t.tagName=='INPUT'&&t.type!='date'&&!isKode&&/^[\d.,\s-]*$/.test(t.value)&&t.value.includes(','))t.value=t.value.replace(/,/g,'.');if(e.isTrusted)SIMDATA=false;calc()});$('mk').onclick=mk;document.addEventListener('focusin',e=>{const t=e.target;if(t.tagName=='INPUT'&&t.closest&&t.closest('#calc')&&t.type!='date'&&t.id!='nm'&&t.id!='jd'&&!(t.closest('#smp,#spk')&&t===t.closest('tr').querySelector('input')))t.setAttribute('inputmode','decimal')});$('addS').onclick=()=>{addS();calc()};$('addK').onclick=()=>{addK();calc()};$('ex').onclick=ex;
+$('clr').onclick=()=>{SIMDATA=false;stdTable();sampleTables();calc()};
+function mk(){if(!REG){$('rep').innerHTML='Data kalibrasi belum lengkap. Isi di bagian Kalkulator.';return}
+const t=(h,r)=>`<table><tr>${h.map(x=>'<th>'+x+'</th>').join('')}</tr>${r.map(x=>'<tr>'+x.map(y=>'<td>'+esc(y)+'</td>').join('')+'</tr>').join('')}</table>`,pr=Object.entries(RES.g);
+$('rep').innerHTML=`<h2 style="text-align:center">LAPORAN PENETAPAN KADAR FOSFAT</h2>${SIMDATA?'<p style="border:2px solid #b42318;color:#b42318;padding:6px;font-weight:700;text-align:center">DATA CONTOH / SIMULASI, bukan hasil pengukuran</p>':''}<p style="text-align:center">${esc($('jd').value)}<br>Politeknik AKA Bogor<br>Analis: ${esc($('nm').value||(window.TIM||[]).map(t=>t[0]).filter(n=>!/^Nama anggota/.test(n)).join(', ')||'-')} | Tanggal: ${esc($('tg').value||'-')}</p>
+<h3>1. Metode</h3><p>Spektrofotometri visible metode asam askorbat pada 880 nm (SNI 06-6989.31-2005). Alat: Agilent Cary 60, kuvet 1 cm, 10 mL larutan + 1,6 mL pereaksi kombinasi, warna dikembangkan 10 menit. Abs blanko preparasi: ${f(BK(),4)}. Konsentrasi sampel dihitung dari kurva kalibrasi: Cs = (Abs − blanko − a) / b.</p>
+<h3>2. Standar induk dan deret standar</h3><p>C induk = ${f(+$('ci').textContent,2)} mg/L; C baku 2 = ${f(+$('c2').textContent,3)} mg/L.</p>${t(['Konsentrasi (mg/L)','Absorbansi','Konsentrasi hitung (mg/L)'],REG.X.map((x,i)=>[f(x,4),f(REG.Y[i]),f(conc(REG.Y[i],REG),4)]))}
+<h3>3. Kurva kalibrasi</h3><img src="${$('ch').toDataURL()}" style="max-width:100%"><p>Y = ${f(REG.a,4)} + ${f(REG.b,4)}X; r = ${f(REG.r,5)}; R² = ${f(REG.r2,5)}; LOD = ${f(REG.lod,4)} mg/L; LOQ = ${f(REG.loq,4)} mg/L.</p>
+<h3>4. Hasil sampel</h3>${t(['Kode','Ulangan','Bobot (g)','V labu (mL)','Fp','Abs','Cs (mg/L)','Kadar','Satuan'],RES.rows.map((o,i)=>[o.k,RES.rows.slice(0,i+1).filter(z=>z.k==o.k).length,isFinite(o.m)?o.m:'-',o.vl,o.fp,f(o.ab),f(o.cs,4),f(o.kd,2)+(o.lq?' *':''),o.j=='air'?'mg P/L':'mg P/kg']))}<p style="font-size:12px">* Cs di bawah LOQ, hasil indikatif.</p>
+<h3>5. Presisi</h3>${t(['Kode','Rerata','SD','%RSD','%RPD','Status'],pr.map(([k,a])=>{const s=a.stat;return[k,f(s.m,2),f(s.s,3),f(s.rsd,2),f(s.rpd,2),(isFinite(s.rpd)?s.rpd:s.rsd)<=10?'Memenuhi':'Perlu ditinjau']}))}
+<h3>6. Akurasi</h3>${SP.length?t(['Kode','C1','C3','C2','% Rec','Status'],SP.map(o=>[o.k,f(o.c1,2),f(o.c3,2),f(o.c2,2),f(o.rec,1),o.rec>=80&&o.rec<=120?'Memenuhi':'Tidak memenuhi'])):'<p>Tidak ada data spike.</p>'}
+<h3>7. Kesimpulan</h3><p>Linearitas ${REG.r>=.995?'memenuhi':'belum memenuhi'} (r ≥ 0,995). Kriteria presisi (≤10%) dan akurasi (80-120%) adalah acuan umum; sesuaikan dengan ketentuan diktat/dosen.</p><table style="margin-top:24px"><tr><td style="height:90px;vertical-align:bottom">Analis<br><br>( ${esc($('nm').value||'.........')} )</td><td style="vertical-align:bottom">Dosen pembimbing<br><br>( ......... )</td></tr></table>`}
+stdTable();sampleTables();try{init()}catch(e){console.error(e);$('ld').innerHTML='Model 3D gagal dimuat (WebGL/Three.js): '+e.message}ex();mk();
